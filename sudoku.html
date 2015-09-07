@@ -1,0 +1,675 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>Sudoku Solver</title>
+		<script>		
+			// Object.create is not supported in all browsers (see e.g. javascript.info)
+			var inherit  = Object.create || function(o) {
+				function F() {}
+				F.prototype = o;
+				return new F();
+			};
+		</script>
+		<script>
+			function Grid(m) {
+				this.m = m;
+				this.storage = [];
+			}
+			
+			Grid.prototype.checkRange = function(i,j) {
+				if (i < this.m && j < this.m && i >= 0 && j >= 0) {
+					return true;
+				}
+				else {
+					throw new Error("Out of Range");
+				}
+			};
+						
+		    Grid.prototype.store = function(n,i,j) {
+				this.checkRange(i,j);
+				this.storage[i*this.m+j] = n;			
+			};
+			
+			Grid.prototype.read = function(i,j) {
+				this.checkRange(i,j);
+				return this.storage[i*this.m+j];
+			};
+			
+			Grid.prototype.print = function() {
+				var i,j, result = "";
+				for (i = 0; i < this.m; ++i) {
+					for (j = 0; j < this.m; ++j) {
+						result += this.read(i,j) + " ";
+					}
+					result += "\n";
+				}
+				console.log(result);
+			};
+		</script>
+		<script>
+			// m must be square number.
+			function Sudoku(m) {
+				Grid.call(this, m);		
+				this.sqrtM = Math.sqrt(this.m);
+				this.cellColor = "Black";
+			}
+			
+			// Subtyping
+			Sudoku.prototype = inherit(Grid.prototype);
+			Sudoku.prototype.constructor = Sudoku;
+			
+			
+			Sudoku.prototype.isConsistent = function() {
+				var i, j, n, crossesArray = [];
+				var iSub, jSub, iLower, jLower;
+				
+				// Rows
+				for (i = 0; i < this.m; ++i) {
+					for (j = 0; j < this.m; ++j) {
+						n = this.read(i,j);
+						if (typeof n === "undefined") {
+							continue;
+						}
+						if (crossesArray[n - 1] === true) {
+							return false;
+						}
+						crossesArray[n - 1] = true;
+					}
+					crossesArray = [];
+				}
+				
+				// Columns
+				for (j = 0; j < this.m; ++j) {
+					for (i = 0; i < this.m; ++i) {
+						n = this.read(i,j);
+						if (typeof n === "undefined") {
+							continue;
+						}
+						if (crossesArray[n - 1] === true) {
+							return false;
+						}
+						crossesArray[n - 1] = true;
+					}
+					crossesArray = [];
+				}
+				
+				// Subgrids
+				for (iSub = 0; iSub < this.sqrtM; ++iSub) {
+					for (jSub = 0; jSub < this.sqrtM; ++jSub) {
+						iLower = this.sqrtM * iSub;
+						jLower = this.sqrtM * jSub;
+						for (i = iLower; i < iLower + this.sqrtM; ++i) {
+							for (j = jLower; j < jLower + this.sqrtM; ++j) {
+								n = this.read(i,j);
+								if (typeof n === "undefined") {
+									continue;
+								}
+								if (crossesArray[n - 1] === true) {
+									return false;
+								}
+								crossesArray[n - 1] = true;
+							}
+						}
+						crossesArray = [];
+					}
+				}
+				
+				return true;
+			};
+			
+			Sudoku.prototype.store = function(n,i,j) {
+				Grid.prototype.store.call(this,n,i,j);
+				if(this.isConsistent()) {
+					this.changeCell(n, i, j);
+					return true;
+				}
+				else {
+					Grid.prototype.store.call(this,undefined,i,j);
+					return false;
+				}
+			}
+			
+			Sudoku.prototype.getEntry = function(i,j) {
+				return document.getElementById(i+","+j);
+			};
+			
+			Sudoku.prototype.cellChanged = function(i,j) {
+				// Get element.
+				var element = this.getEntry(i,j);
+				
+				// Is input a valid number?
+				var number = parseInt(element.value);
+				
+				element.style.color = "Black";
+				if (isNaN(number) || number > 9 || number < 1)  {
+					element.style.color = "#FF0000";
+					return false;
+				}
+			
+				// Insert into sudoku
+				if (this.store(number,i,j)) {
+					return true;
+				}
+				element.style.color = "#FF0000";
+			};
+			
+			Sudoku.prototype.changeCell = function(n,i,j) {
+				var element = this.getEntry(i,j);
+				element.style.color = this.cellColor;
+				element.value = n;
+			};
+			
+			Sudoku.prototype.solve = function() {
+				var solver = new Solver(this);
+				this.cellColor = "Blue";
+				if(solver.solve()) {
+					console.log("true");
+					return true;
+				}
+				else {
+					console.log(false);
+					return false;
+				}
+			};
+		</script>
+		<script>	
+			function Solver(sudoku) {
+				var i, j, x, n;
+				this.m = sudoku.m;
+				this.sqrtM = sudoku.sqrtM;
+				this.grids = [];
+				// Allocate m+1 grids (grid 0 to contain sudoku solution)
+				for (x = 1; x <= this.m; ++x) {
+					this.grids[x] = new Grid(this.m);
+				}
+				
+				this.sudoku = sudoku;
+				for (i = 0; i < this.m; ++i) {
+					for (j = 0; j < this.m; ++j) {
+						n = sudoku.read(i,j);
+						if (typeof n !== "undefined") {
+							this.insert(n,i,j);
+						}
+					}
+				}
+				
+			}
+			
+			Solver.prototype.insert = function(n,i,j) {
+				var x, y, iLower, jLower;
+				if (n <= this.m && n >= 1) {
+					
+					// Store solution
+					this.sudoku.store(n,i,j); 
+					
+					// Cross out position for all numbers
+					for (x = 1; x <= this.m; ++x) { 
+						this.grids[x].store(false,i,j);
+					}
+					
+					// Cross out entire row and column for number n
+					for (x = 0; x < this.m; ++x) {
+						this.grids[n].store(false,i,x);
+						this.grids[n].store(false,x,j);
+					}
+					
+					// Cross out small grid for number n
+					iLower = this.sqrtM * Math.floor(i/this.sqrtM);
+					jLower = this.sqrtM * Math.floor(j/this.sqrtM);
+					for (x = iLower; x < iLower + this.sqrtM; ++x) {
+						for (y = jLower; y < jLower + this.sqrtM; ++y) {
+							this.grids[n].store(false,x,y);
+						}
+					}
+				}
+				else {
+					throw new Error("Illegal Number");
+				}
+			};
+			
+			// Checks if value n can only be inserted in one place in the row i
+			Solver.prototype.checkRow = function(n,i) {
+				var guess = false, x;
+				var numberOfSolutions = 0;
+				
+				if (typeof n === "undefined") {
+					for (n = 1; n <= this.m; ++n) {
+						numberOfSolutions += this.checkRow(n,i);
+					}
+					return numberOfSolutions;
+				}
+				
+				if (typeof i === "undefined") {
+					for (i = 0; i < this.m; ++i) {
+						numberOfSolutions += this.checkRow(n,i);
+					}
+					return numberOfSolutions;
+				}
+
+				for (x = 0; x < this.m; ++x) {
+					if (this.grids[n].read(i,x) !== false) {
+						if (guess !== false) {
+							return 0;
+						}
+						guess = x;
+					}
+				}
+				if (guess === false) {
+					return 0;
+				}
+				this.insert(n,i,guess);	
+				return 1;
+			};			
+			
+			// Checks if value n can only be inserted in one place in the column j
+			Solver.prototype.checkColumn = function(n,j) {
+				var guess = false, x;
+				var numberOfSolutions = 0;
+				
+				if (typeof n === "undefined") {
+					for (n = 1; n <= this.m; ++n) {
+						numberOfSolutions += this.checkColumn(n,j);
+					}
+					return numberOfSolutions;
+				}
+
+				if (typeof j === "undefined") {
+					for (j = 0; j < this.m; ++j) {
+						numberOfSolutions += this.checkColumn(n,j);
+					}
+					return numberOfSolutions;
+				}
+				
+				for (x = 0; x < this.m; ++x) {
+					if (this.grids[n].read(x,j) !== false) {
+						if (guess !== false) {
+							return 0;
+						}
+						guess = x;
+					}
+				}
+				if (guess === false) {
+					return 0;
+				}
+				this.insert(n,guess,j);	
+				return 1;
+
+			};
+			
+			// Checks if value n can only be inserted in one place in subgrid (iSub,jSub)
+			Solver.prototype.checkSubgrid = function(n, iSub, jSub) { 
+				var guess = false, x, y, iLower, jLower;
+				var numberOfSolutions = 0;
+				iLower = this.sqrtM * iSub;
+				jLower = this.sqrtM * jSub;
+				
+				if (typeof n === "undefined") {
+					for (n = 1; n <= this.m; ++n) {
+						numberOfSolutions += this.checkSubgrid(n,iSub,jSub);
+					}
+					return numberOfSolutions;
+				}
+				
+				if (typeof iSub === "undefined") {
+					for (iSub = 0; iSub < this.sqrtM; ++iSub) {
+						numberOfSolutions += this.checkSubgrid(n, iSub, jSub);
+					}
+					return numberOfSolutions;
+				}
+					
+				if (typeof jSub === "undefined") {
+					for (jSub = 0; jSub < this.sqrtM; ++jSub) {
+						numberOfSolutions += this.checkSubgrid(n, iSub, jSub);
+					}
+					return numberOfSolutions;
+				}
+							
+				for (x = iLower; x < iLower + this.sqrtM; ++x) {
+					for (y = jLower; y < jLower + this.sqrtM; ++y) {
+						if (this.grids[n].read(x,y) !== false) {
+							if (guess !== false) {
+								return 0;
+							}
+							guess = {
+								i: x,
+								j: y
+							};
+						}
+					}
+				}
+				if (guess === false) {
+					return 0;
+				}
+				this.insert(n, guess.i, guess.j);
+				return 1;
+								
+			};
+			
+			
+			// Checks if position (i,j) can only be filled by one number
+			Solver.prototype.lonelyNumber = function(i,j) {
+				var x, guess = false;
+				var numberOfSolutions = 0;
+				
+				if (typeof i === "undefined") {
+					for (i = 0; i < this.m; ++i) {
+						numberOfSolutions += this.lonelyNumber(i,j);
+					}
+					return numberOfSolutions;
+				}
+				
+				if (typeof j === "undefined") {
+					for (j = 0; j < this.m; ++j) {
+						numberOfSolutions += this.lonelyNumber(i,j);
+					}
+					return numberOfSolutions;
+				}
+				
+				for (x = 1; x <= this.m; ++x) {
+					if (this.grids[x].read(i,j) !== false) {
+						if (guess !== false) {
+							return 0;
+						}
+						guess = x;
+					}
+				}
+				if (guess === false) {
+					return 0;
+				}
+				this.insert(guess, i, j);
+				return 1;
+			};
+			
+			Solver.prototype.findClues = function() {
+				var numberOfSolutions = 0;
+				numberOfSolutions += this.checkColumn();
+				numberOfSolutions += this.checkRow();
+				numberOfSolutions += this.lonelyNumber();
+				numberOfSolutions += this.checkSubgrid();
+				return numberOfSolutions;
+			};
+			
+			Solver.prototype.isConsistent = function() {
+				return this.sudoku.isConsistent();
+			};
+				
+			
+			Solver.prototype.solve = function() {
+				if (!this.isConsistent()) {
+					throw new Error("Inconsistent Sudoku cannot be solved");
+				}
+				while(this.findClues() !== 0) {}
+			};
+			
+			Solver.prototype.print = function() {
+				var x;
+				for (x = 0; x <= this.m; ++x) {
+					this.grids[x].print();
+				}
+			}
+		</script>
+		<script>
+			var sudoku = new Sudoku(9);
+			function initialize1() {
+			sudoku.store(4,0,2);
+			sudoku.store(5,1,0)
+			sudoku.store(8,2,0)
+			sudoku.store(8,4,2)
+			sudoku.store(1,5,1)
+			sudoku.store(6,6,0)
+			sudoku.store(4,7,0)
+			sudoku.store(5,8,2)
+			sudoku.store(1,1,3)
+			sudoku.store(3,2,4)
+			sudoku.store(4,3,3)
+			sudoku.store(2,3,5)
+			sudoku.store(9,5,3)
+			sudoku.store(5,5,5)
+			sudoku.store(4,6,4)
+			sudoku.store(7,7,5)
+			sudoku.store(9,0,6)
+			sudoku.store(8,1,8)
+			sudoku.store(7,2,8)
+			sudoku.store(3,3,7)
+			sudoku.store(7,4,6)
+			sudoku.store(1,6,8)
+			sudoku.store(6,7,8)
+			sudoku.store(2,8,6)
+			}
+			
+		function initialize2() {
+			sudoku.store(3,2,0)
+			sudoku.store(9,6,0)
+			sudoku.store(4,1,1)
+			sudoku.store(8,7,1)
+			sudoku.store(5,0,2)
+			sudoku.store(2,3,2)
+			sudoku.store(8,5,2)
+			sudoku.store(7,8,2)
+			sudoku.store(9,2,3)
+			sudoku.store(1,4,3)
+			sudoku.store(5,4,4)
+			sudoku.store(4,4,5)
+			sudoku.store(3,3,4)
+			sudoku.store(6,5,4)
+			sudoku.store(3,6,3)
+			sudoku.store(1,6,5)
+			sudoku.store(8,2,5)
+			sudoku.store(1,0,6)
+			sudoku.store(9,3,6)
+			sudoku.store(4,5,6)
+			sudoku.store(2,8,6)
+			sudoku.store(6,1,7)
+			sudoku.store(5,7,7)
+			sudoku.store(7,2,8)
+			sudoku.store(6,6,8)
+			}
+			
+		</script>
+		<style>
+		table {
+			border-collapse: collapse;
+		}
+		th, td
+		 {
+			padding: 5px;
+		}
+		.cell input {
+			display: inline-block;
+			float: left;
+
+			border: 1px solid black;
+			width: 40px;
+			height: 40px;
+
+			text-align: center;
+			font-size: 30px;
+		}
+		</style>
+	</head>
+	<body>
+		<table style="width:50px" >
+			<tr>
+				<td style="border-style: none">
+					<table style="border: 5px solid black">
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(0,0)" id="0,0"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(0,1)" id="0,1"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(0,2)" id="0,2"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(1,0)" id="1,0"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(1,1)" id="1,1"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(1,2)" id="1,2"></td>					
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(2,0)" id="2,0"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(2,1)" id="2,1"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(2,2)" id="2,2"></td>
+						</tr>
+					</table>
+				</td>
+				<td style="border-style: none">
+					<table style="border: 5px solid black">
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(0,3)" id="0,3"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(0,4)" id="0,4"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(0,5)" id="0,5"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(1,3)" id="1,3"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(1,4)" id="1,4"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(1,5)" id="1,5"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(2,3)" id="2,3"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(2,4)" id="2,4"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(2,5)" id="2,5"></td>
+						</tr>
+					</table>
+				</td>
+					<td style="border-style: none">
+					<table style="border: 5px solid black">
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(0,6)" id="0,6"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(0,7)" id="0,7"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(0,8)" id="0,8"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(1,6)" id="1,6"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(1,7)" id="1,7"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(1,8)" id="1,8"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(2,6)" id="2,6"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(2,7)" id="2,7"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(2,8)" id="2,8"></td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+			
+			<!--SECOND ROW-->
+			<tr>
+				<td style="border-style: none">
+					<table style="border: 5px solid black">
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(3,0)" id="3,0"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(3,1)" id="3,1"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(3,2)" id="3,2"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(4,0)" id="4,0"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(4,1)" id="4,1"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(4,2)" id="4,2"></td>					
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(5,0)" id="5,0"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(5,1)" id="5,1"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(5,2)" id="5,2"></td>
+						</tr>
+					</table>
+				</td>
+				<td style="border-style: none">
+					<table style="border: 5px solid black">
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(3,3)" id="3,3"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(3,4)" id="3,4"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(3,5)" id="3,5"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(4,3)" id="4,3"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(4,4)" id="4,4"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(4,5)" id="4,5"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(5,3)" id="5,3"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(5,4)" id="5,4"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(5,5)" id="5,5"></td>
+						</tr>
+					</table>
+				</td>
+					<td style="border-style: none">
+					<table style="border: 5px solid black">
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(3,6)" id="3,6"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(3,7)" id="3,7"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(3,8)" id="3,8"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(4,6)" id="4,6"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(4,7)" id="4,7"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(4,8)" id="4,8"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(5,6)" id="5,6"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(5,7)" id="5,7"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(5,8)" id="5,8"></td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+			<!--THIRD ROW-->
+			<tr>
+				<td style="border-style: none">
+					<table style="border: 5px solid black">
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(6,0)" id="6,0"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(6,1)" id="6,1"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(6,2)" id="6,2"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(7,0)" id="7,0"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(7,1)" id="7,1"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(7,2)" id="7,2"></td>					
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(8,0)" id="8,0"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(8,1)" id="8,1"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(8,2)" id="8,2"></td>
+						</tr>
+					</table>
+				</td>
+				<td style="border-style: none">
+					<table style="border: 5px solid black">
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(6,3)" id="6,3"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(6,4)" id="6,4"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(6,5)" id="6,5"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(7,3)" id="7,3"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(7,4)" id="7,4"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(7,5)" id="7,5"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(8,3)" id="8,3"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(8,4)" id="8,4"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(8,5)" id="8,5"></td>
+						</tr>
+					</table>
+				</td>
+				<td style="border-style: none">
+					<table style="border: 5px solid black">
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(6,6)" id="6,6"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(6,7)" id="6,7"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(6,8)" id="6,8"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(7,6)" id="7,6"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(7,7)" id="7,7"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(7,8)" id="7,8"></td>
+						</tr>
+						<tr>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(8,6)" id="8,6"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(8,7)" id="8,7"></td>
+							<td class="cell"><input type="text" class="entry" maxlength="1" onchange="sudoku.cellChanged(8,8)" id="8,8"></td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+		</table>
+		<input type="button" value="solve" onclick="sudoku.solve()">
+	</body>
+</html>
